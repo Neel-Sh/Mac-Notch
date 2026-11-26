@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <radialGradient id="leak" gradientUnits="userSpaceOnUse" cx="512" cy="470" r="400" gradientTransform="translate(512 470) scale(1 0.72) translate(-512 -470)">
+      <stop offset="0%" stop-color="#FFD58A" stop-opacity="1"/>
+      <stop offset="16%" stop-color="#FFA766" stop-opacity="0.95"/>
+      <stop offset="36%" stop-color="#FF6F61" stop-opacity="0.70"/>
+      <stop offset="62%" stop-color="#8A4DFF" stop-opacity="0.32"/>
+      <stop offset="100%" stop-color="#5B3BD6" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect x="0" y="0" width="1024" height="1024" fill="url(#leak)"/>
+</svg>
