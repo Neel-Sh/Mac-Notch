@@ -130,3 +130,12 @@ extension NSImage {
         return NSColor(hue: hue, saturation: min(saturation * 1.2, 0.85), brightness: max(brightness, 0.75), alpha: 1)
     }
 }
+
+extension NowPlaying {
+    func loadDemo(title: String, artist: String, album: String, artwork: NSImage) {
+        track = Track(title: title, artist: artist, album: album, player: .music)
+        isPlaying = true
+        self.artwork = artwork
+        accent = artwork.dominantColor
+    }
+}

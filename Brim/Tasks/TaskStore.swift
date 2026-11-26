@@ -59,3 +59,8 @@ final class TaskStore {
         if let data = try? JSONEncoder().encode(items) { try? data.write(to: url, options: .atomic) }
     }
 }
+
+extension TaskStore {
+    /// In memory only: demo tasks never overwrite the real list on disk.
+    func loadDemo(_ demo: [TaskItem]) { items = demo }
+}

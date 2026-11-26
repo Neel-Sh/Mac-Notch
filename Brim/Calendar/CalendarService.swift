@@ -27,6 +27,7 @@ final class CalendarService {
 
     @ObservationIgnored private let store = EKEventStore()
     @ObservationIgnored private var observer: Any?
+    @ObservationIgnored fileprivate var isDemo = false
 
     var days: [Date] {
         let today = Calendar.current.startOfDay(for: .now)
@@ -53,7 +54,7 @@ final class CalendarService {
 
     /// Asked the first time the Calendar page opens, never at launch.
     func requestAccessIfNeeded() {
-        guard access == .unknown else { load(); return }
+        guard !isDemo, access == .unknown else { load(); return }
         Task {
             let granted = (try? await store.requestFullAccessToEvents()) ?? false
             access = granted ? .granted : .denied
@@ -70,7 +71,7 @@ final class CalendarService {
     }
 
     func load() {
-        guard Self.currentAccess == .granted else { return }
+        guard !isDemo, Self.currentAccess == .granted else { return }
         access = .granted
         let start = Calendar.current.startOfDay(for: .now)
         guard let end = Calendar.current.date(byAdding: .day, value: 7, to: start) else { return }
@@ -109,5 +110,13 @@ final class CalendarService {
     func openInCalendar(_ event: CalendarEvent) {
         if let url = event.calendarItemURL, NSWorkspace.shared.open(url) { return }
         NSWorkspace.shared.open(URL(fileURLWithPath: "/System/Applications/Calendar.app"))
+    }
+}
+
+extension CalendarService {
+    func loadDemo(_ demo: [CalendarEvent]) {
+        isDemo = true
+        access = .granted
+        events = demo.sorted { $0.start < $1.start }
     }
 }

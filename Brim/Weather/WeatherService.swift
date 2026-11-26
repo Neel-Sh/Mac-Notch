@@ -50,6 +50,7 @@ final class WeatherService: NSObject, CLLocationManagerDelegate {
     private(set) var state: State = .idle
 
     @ObservationIgnored private let manager = CLLocationManager()
+    @ObservationIgnored fileprivate var isDemo = false
     @ObservationIgnored private var lastLocation: CLLocation?
     @ObservationIgnored private var timer: Timer?
 
@@ -75,6 +76,7 @@ final class WeatherService: NSObject, CLLocationManagerDelegate {
 
     /// Ask for location only when the person looks at weather, never at launch out of nowhere.
     func refresh() {
+        guard !isDemo else { return }
         switch manager.authorizationStatus {
         case .notDetermined:
             state = .locating
@@ -249,5 +251,12 @@ enum WeatherCode {
         case 95...99: "Thunderstorms"
         default: "Cloudy"
         }
+    }
+}
+
+extension WeatherService {
+    func loadDemo(_ forecast: Forecast) {
+        isDemo = true
+        state = .loaded(forecast)
     }
 }
