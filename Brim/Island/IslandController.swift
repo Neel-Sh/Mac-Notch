@@ -130,11 +130,11 @@ final class IslandController {
             let asks = rows.count { $0.ask != nil && $0.phase == .needsPermission }
             return banner + CGFloat(rows.count) * 54 + CGFloat(asks) * 88
         case .tasks:
-            return 32 + 8 + (tasks.items.isEmpty ? 18 : CGFloat(tasks.items.count) * 40)
+            return 34 + 8 + (tasks.items.isEmpty ? 18 : CGFloat(tasks.items.count) * 41 + 4)
         case .calendar:
             guard calendar.access == .granted else { return 60 }
             let count = calendar.events(on: calendar.selectedDay).count
-            return 56 + 10 + (count == 0 ? 44 : CGFloat(min(count, 4)) * 50 - 6)
+            return 66 + 10 + (count == 0 ? 44 : CGFloat(min(count, 4)) * 50 - 6)
         case .weather:
             return weather.forecast == nil ? 70 : 226
         case .media:
@@ -356,12 +356,14 @@ final class IslandController {
         withAnimation(Motion.swap) { model.tab = tab }
     }
 
-    private func peek(_ session: AgentSession) {
+    func peek(_ session: AgentSession) {
         peekTask?.cancel()
         let height: CGFloat = switch (session.phase, session.ask) {
         case (.needsPermission, let ask?) where ask.isQuestion && ask.questions.count == 1:
             CGFloat(100 + ask.questions[0].options.count * 37)
-        case (.needsPermission, .some): 128
+        case (.needsPermission, let ask?):
+            // Room for a command that wraps onto a second or third line.
+            128 + CGFloat(min(((ask.command ?? ask.tool.detail).count - 1) / 62, 2)) * 17
         default: 86
         }
         withAnimation(Motion.open) {
