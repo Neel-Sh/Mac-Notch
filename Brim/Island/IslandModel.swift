@@ -61,37 +61,87 @@ struct NotchMetrics: Equatable {
 }
 
 /// The one place island sizes come from. Drawing and hit testing both read it.
+/// On the notch the island hangs from the top edge; docked to a side it grows out of that edge instead.
 enum IslandLayout {
-    static let panelSize = CGSize(width: 780, height: 480)
-    static let openWidth: CGFloat = 600
-    static let peekWidth: CGFloat = 460
     static let shoulder: CGFloat = 18
     static let openRadius: CGFloat = 30
     static let headerHeight: CGFloat = 26
-    static let maxContentHeight: CGFloat = 300
+    /// Side docking: the column of page tabs against the screen edge.
+    static let railWidth: CGFloat = 54
+    static let sideRadius: CGFloat = 34
 
-    static func wingWidth(_ notch: NotchMetrics) -> CGFloat { notch.height + 20 }
+    static func panelSize(_ style: IslandStyle) -> CGSize {
+        style.edge.isSide
+            ? CGSize(width: railWidth + sideWidth(style) + 24, height: sideHeight(style) + shoulder * 2 + 24)
+            : CGSize(width: 780, height: 480)
+    }
+
+    static func openWidth(_ style: IslandStyle) -> CGFloat { style.compact ? 500 : 600 }
+    static func peekWidth(_ style: IslandStyle) -> CGFloat { style.compact ? 410 : 460 }
+    static func maxContentHeight(_ style: IslandStyle) -> CGFloat {
+        if style.edge.isSide { return sideHeight(style) - sideChrome }
+        return style.compact ? 240 : 300
+    }
+    /// Side docking: the page beside the rail, and the tallest the panel gets. It hugs each page's
+    /// content and grows from its middle, so the rail of tabs stays put while the page changes.
+    static func sideWidth(_ style: IslandStyle) -> CGFloat { style.compact ? 304 : 340 }
+    static func sideHeight(_ style: IslandStyle) -> CGFloat { style.compact ? 456 : 504 }
+    /// Side docking: everything around a page's content. Its title row and the breathing room that
+    /// keeps the content off the rounded corners.
+    static let sideTop: CGFloat = 8
+    static let sidePageTop: CGFloat = 12
+    static let sidePageBottom: CGFloat = 16
+    static let sideChrome: CGFloat = sideTop + headerHeight + sidePageTop + sidePageBottom
+    static let railButtonHeight: CGFloat = 38
+    static func railHeight(tabs: Int) -> CGFloat {
+        tabs > 1 ? CGFloat(tabs) * railButtonHeight + CGFloat(tabs - 1) * 2 + 8 : 0
+    }
+
+    static func wingWidth(_ notch: NotchMetrics, _ style: IslandStyle) -> CGFloat {
+        notch.height + (style.compact ? 6 : 20)
+    }
 
     /// Everything above an open page's content: the notch band, the tab row and its hairline.
-    static func chromeHeight(_ notch: NotchMetrics) -> CGFloat { notch.height + 6 + headerHeight + 9 }
+    static func chromeHeight(_ notch: NotchMetrics, _ style: IslandStyle) -> CGFloat {
+        notch.height + 6 + headerHeight + 9
+    }
 
-    static func size(for presentation: IslandPresentation, notch: NotchMetrics, peekHeight: CGFloat, contentHeight: CGFloat) -> CGSize {
-        switch presentation {
-        case .resting: CGSize(width: notch.width, height: notch.height)
-        case .wings: CGSize(width: notch.width + wingWidth(notch) * 2, height: notch.height)
-        case .peek: CGSize(width: peekWidth + shoulder * 2, height: notch.height + peekHeight)
+    static func size(for presentation: IslandPresentation, notch: NotchMetrics, style: IslandStyle, tabCount: Int,
+                     pointerNear: Bool, peekHeight: CGFloat, contentHeight: CGFloat) -> CGSize {
+        let content = min(contentHeight, maxContentHeight(style))
+        guard style.edge.isSide else {
+            return switch presentation {
+            case .resting: CGSize(width: notch.width, height: notch.height)
+            case .wings: CGSize(width: notch.width + wingWidth(notch, style) * 2, height: notch.height)
+            case .peek: CGSize(width: peekWidth(style) + shoulder * 2, height: notch.height + peekHeight)
+            case .open: CGSize(width: openWidth(style) + shoulder * 2, height: chromeHeight(notch, style) + content + 16)
+            }
+        }
+        // Docked: width is depth out of the edge, height runs along it (flares included).
+        // A sliver of a pill at rest, a rounder one for live activity, then the panel.
+        let flare = shoulder(for: presentation, style: style) * 2
+        return switch presentation {
+        case .resting: CGSize(width: pointerNear ? 10 : 7, height: (style.compact ? 60 : 72) + flare)
+        case .wings: CGSize(width: 36, height: (style.compact ? 78 : 86) + flare)
+        case .peek: CGSize(width: sideWidth(style), height: peekHeight + 4 + flare)
         case .open:
-            CGSize(width: openWidth + shoulder * 2,
-                   height: chromeHeight(notch) + min(contentHeight, maxContentHeight) + 16)
+            CGSize(width: railWidth + sideWidth(style),
+                   height: max(sideChrome + content, railHeight(tabs: tabCount) + 24) + flare)
         }
     }
 
-    static func bottomRadius(for presentation: IslandPresentation, notch: NotchMetrics) -> CGFloat {
-        presentation.isExpanded ? openRadius : min(notch.height / 3, 11)
+    static func bottomRadius(for presentation: IslandPresentation, notch: NotchMetrics, style: IslandStyle) -> CGFloat {
+        // Docked and closed, the shape clamps this to its depth: the outside is a full round.
+        if style.edge.isSide { return presentation.isExpanded ? sideRadius : 18 }
+        if presentation.isExpanded { return openRadius }
+        return min(notch.height / 3, 11)
     }
 
-    static func shoulder(for presentation: IslandPresentation) -> CGFloat {
-        presentation.isExpanded ? shoulder : 0
+    static func shoulder(for presentation: IslandPresentation, style: IslandStyle) -> CGFloat {
+        if presentation.isExpanded { return shoulder }
+        // Docked, even the closed pill flares a little where it leaves the bezel.
+        guard style.edge.isSide else { return 0 }
+        return presentation == .wings ? 7 : 3
     }
 }
 
@@ -115,6 +165,8 @@ final class IslandModel {
     /// How tall each page wants to be. Reads observable sources, so it's tracked.
     @ObservationIgnored var contentHeight: (IslandTab) -> CGFloat = { _ in 160 }
 
+    var style: IslandStyle { Preferences.shared.style }
+
     var presentation: IslandPresentation {
         if isDropTargeted { return .open(.shelf) }
         if isHovering || isOpenedByClick || isEditing { return .open(tab) }
@@ -124,6 +176,11 @@ final class IslandModel {
 
     var size: CGSize {
         let page: IslandTab = if case .open(let shown) = presentation { shown } else { tab }
-        return IslandLayout.size(for: presentation, notch: notch, peekHeight: peekHeight, contentHeight: contentHeight(page))
+        return size(for: presentation, page: page)
+    }
+
+    func size(for presentation: IslandPresentation, page: IslandTab) -> CGSize {
+        IslandLayout.size(for: presentation, notch: notch, style: style, tabCount: Preferences.shared.visibleTabs.count,
+                          pointerNear: isPointerNear, peekHeight: peekHeight, contentHeight: contentHeight(page))
     }
 }

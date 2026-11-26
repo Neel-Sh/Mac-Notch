@@ -2,12 +2,13 @@ import SwiftUI
 
 struct CalendarPage: View {
     let service: CalendarService
+    @Environment(\.islandStyle) private var style
 
     var body: some View {
         switch service.access {
         case .granted:
-            VStack(spacing: 10) {
-                DayRail(service: service)
+            VStack(spacing: 12) {
+                DayRail(service: service, stacked: style.edge.isSide)
                 Agenda(service: service, events: service.events(on: service.selectedDay))
             }
         case .unknown:
@@ -23,7 +24,16 @@ struct CalendarPage: View {
         }
     }
 
+    @ViewBuilder
     private func prompt(_ title: String, _ detail: String, button: String, action: @escaping () -> Void) -> some View {
+        if style.edge.isSide {
+            SidePrompt(symbol: "calendar", title: title, detail: detail, button: button, prominent: true, action: action)
+        } else {
+            widePrompt(title, detail, button: button, action: action)
+        }
+    }
+
+    private func widePrompt(_ title: String, _ detail: String, button: String, action: @escaping () -> Void) -> some View {
         HStack(spacing: 12) {
             Image(systemName: "calendar")
                 .font(.system(size: 18, weight: .medium))
@@ -39,33 +49,154 @@ struct CalendarPage: View {
     }
 }
 
-/// Month on the left, the week as a rail of days. A dot under a day means something's on.
+/// Month on the left, the days as a rail: a week at a time, two-finger scroll for the weeks after.
+/// A dot under a day means something's on. Docked, the month moves above the rail so the week gets the width.
 private struct DayRail: View {
     let service: CalendarService
+    var stacked = false
+    @State private var firstVisible: Date?
+    @State private var railFrame: CGRect = .zero
+    @State private var wheel = WheelMonitor()
+
+    private var today: Date { Calendar.current.startOfDay(for: .now) }
+    /// The month of what's on screen, so it turns over as you scroll into the next one.
+    private var shownMonth: Date { firstVisible ?? service.selectedDay }
+    private var scrolledAway: Bool { firstVisible.map { !Calendar.current.isDate($0, inSameDayAs: today) } ?? false }
+
+    private var offToday: Bool {
+        scrolledAway || !Calendar.current.isDate(service.selectedDay, inSameDayAs: today)
+    }
 
     var body: some View {
-        HStack(spacing: 14) {
-            VStack(alignment: .leading, spacing: 1) {
-                Text(service.selectedDay.formatted(.dateTime.month(.abbreviated)))
-                    .font(.system(size: 22, weight: .bold, design: .rounded))
-                Text(service.selectedDay.formatted(.dateTime.year()))
-                    .font(.system(size: 10.5, weight: .semibold))
-                    .foregroundStyle(Theme.tertiary)
-            }
-            .frame(width: 58, alignment: .leading)
-
-            Rectangle().fill(Theme.hairline).frame(width: 1, height: 38)
-
-            HStack(spacing: 4) {
-                ForEach(service.days, id: \.self) { day in
-                    DayCell(day: day,
-                            selected: Calendar.current.isDate(day, inSameDayAs: service.selectedDay),
-                            hasEvents: !service.events(on: day).isEmpty) {
-                        withAnimation(Motion.swap) { service.selectedDay = day }
+        Group {
+            if stacked {
+                VStack(spacing: 8) {
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Text(shownMonth.formatted(.dateTime.month(.wide)))
+                            .font(.system(size: 22, weight: .bold, design: .rounded))
+                            .contentTransition(.numericText())
+                            .animation(Motion.swap, value: shownMonth.formatted(.dateTime.month()))
+                        Text(shownMonth.formatted(.dateTime.year()))
+                            .font(.system(size: 13, weight: .semibold, design: .rounded))
+                            .foregroundStyle(Theme.tertiary)
+                        Spacer(minLength: 8)
+                        if offToday {
+                            Button("Today", action: jumpToToday)
+                                .buttonStyle(.plain)
+                                .font(.system(size: 11.5, weight: .semibold))
+                                .foregroundStyle(Theme.working)
+                                .transition(.opacity)
+                        }
                     }
+                    .padding(.horizontal, 4)
+                    .animation(Motion.swap, value: offToday)
+                    week.frame(height: 56)
                 }
+            } else {
+                HStack(spacing: 12) {
+                    monthColumn
+                    Rectangle().fill(Theme.hairline).frame(width: 1, height: 38)
+                    week
+                }
+                .frame(height: 56)
             }
         }
+        .onAppear { wheel.start(in: { railFrame }, step: step) }
+        .onDisappear { wheel.stop() }
+    }
+
+    private var monthColumn: some View {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(shownMonth.formatted(.dateTime.month(.abbreviated)))
+                    .font(.system(size: 22, weight: .bold, design: .rounded))
+                    .contentTransition(.numericText())
+                    .animation(Motion.swap, value: shownMonth.formatted(.dateTime.month()))
+                if offToday {
+                    Button("Today", action: jumpToToday)
+                        .buttonStyle(.plain)
+                        .font(.system(size: 10.5, weight: .semibold))
+                        .foregroundStyle(Theme.working)
+                        .transition(.opacity)
+                } else {
+                    Text(shownMonth.formatted(.dateTime.year()))
+                        .font(.system(size: 10.5, weight: .semibold))
+                        .foregroundStyle(Theme.tertiary)
+                        .transition(.opacity)
+                }
+            }
+            .frame(width: 58, alignment: .leading)
+            .animation(Motion.swap, value: scrolledAway)
+    }
+
+    private var week: some View {
+            ScrollView(.horizontal) {
+                LazyHStack(spacing: 4) {
+                    ForEach(service.days, id: \.self) { day in
+                        DayCell(day: day,
+                                selected: Calendar.current.isDate(day, inSameDayAs: service.selectedDay),
+                                hasEvents: !service.events(on: day).isEmpty) {
+                            withAnimation(Motion.swap) { service.selectedDay = day }
+                        }
+                        .containerRelativeFrame(.horizontal, count: 7, spacing: 4)
+                    }
+                }
+                .scrollTargetLayout()
+            }
+            .scrollIndicators(.never)
+            .scrollTargetBehavior(.viewAligned(limitBehavior: .never))
+            .scrollPosition(id: $firstVisible, anchor: .leading)
+            .scrollEdgeEffectStyle(.soft, for: .horizontal)
+            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { railFrame = $0 }
+    }
+
+    /// Moves the rail a day for each notch of a vertical swipe or mouse wheel.
+    private func step(_ days: Int) {
+        let all = service.days
+        let current = firstVisible.flatMap { day in all.firstIndex { Calendar.current.isDate($0, inSameDayAs: day) } } ?? 0
+        let target = min(max(0, current + days), max(0, all.count - 7))
+        guard target != current else { return }
+        withAnimation(Motion.swap) { firstVisible = all[target] }
+    }
+
+    private func jumpToToday() {
+        withAnimation(Motion.swap) {
+            service.selectedDay = today
+            firstVisible = today
+        }
+    }
+}
+
+/// A horizontal scroll view ignores vertical wheel motion. Over the rail, this turns it into days,
+/// so a two-finger swipe in either direction (or a plain mouse wheel) moves through the weeks.
+@MainActor
+private final class WheelMonitor {
+    private var monitor: Any?
+    private var accumulated: CGFloat = 0
+    private static let pointsPerDay: CGFloat = 36
+
+    func start(in frame: @escaping () -> CGRect, step: @escaping (Int) -> Void) {
+        stop()
+        monitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
+            guard let self, let content = event.window?.contentView,
+                  abs(event.scrollingDeltaY) > abs(event.scrollingDeltaX) else { return event }
+            let point = CGPoint(x: event.locationInWindow.x, y: content.bounds.height - event.locationInWindow.y)
+            guard frame().contains(point) else { return event }
+            if event.phase == .began { self.accumulated = 0 }
+            let delta = event.hasPreciseScrollingDeltas ? event.scrollingDeltaY : event.scrollingDeltaY * Self.pointsPerDay
+            self.accumulated -= delta
+            let days = Int(self.accumulated / Self.pointsPerDay)
+            if days != 0 {
+                self.accumulated -= CGFloat(days) * Self.pointsPerDay
+                step(days)
+            }
+            return nil
+        }
+    }
+
+    func stop() {
+        if let monitor { NSEvent.removeMonitor(monitor) }
+        monitor = nil
+        accumulated = 0
     }
 }
 
@@ -77,21 +208,25 @@ private struct DayCell: View {
     @State private var hovered = false
 
     private var isToday: Bool { Calendar.current.isDateInToday(day) }
+    /// The first of a month says which month, so the rail reads across the turn.
+    private var startsMonth: Bool { Calendar.current.component(.day, from: day) == 1 }
 
     var body: some View {
         Button(action: action) {
             VStack(spacing: 3) {
-                Text(day.formatted(.dateTime.weekday(.narrow)))
-                    .font(.system(size: 9.5, weight: .semibold))
-                    .foregroundStyle(isToday ? Theme.working : Theme.tertiary)
+                Text(startsMonth ? day.formatted(.dateTime.month(.abbreviated)).uppercased()
+                                 : day.formatted(.dateTime.weekday(.abbreviated)).uppercased())
+                    .font(.system(size: 9, weight: .bold))
+                    .tracking(0.4)
+                    .foregroundStyle(isToday ? Theme.working : (startsMonth ? Theme.secondary : Theme.tertiary))
                 Text(day.formatted(.dateTime.day()))
                     .font(.system(size: 15, weight: .semibold, design: .rounded).monospacedDigit())
-                    .foregroundStyle(selected ? Color.black : Theme.primary)
+                    .foregroundStyle(selected ? Color.black : (isWeekend ? Theme.secondary : Theme.primary))
                     .frame(width: 30, height: 30)
                     .background(Circle().fill(selected ? Color.white : Color.white.opacity(hovered ? 0.08 : 0)))
                 Circle()
-                    .fill(hasEvents ? Theme.secondary : .clear)
-                    .frame(width: 3.5, height: 3.5)
+                    .fill(hasEvents ? (selected ? Theme.primary : Theme.tertiary) : .clear)
+                    .frame(width: 4, height: 4)
             }
             .frame(maxWidth: .infinity)
             .contentShape(Rectangle())
@@ -99,12 +234,17 @@ private struct DayCell: View {
         .buttonStyle(.plain)
         .onHover { hovering in withAnimation(Motion.tap) { hovered = hovering } }
         .animation(Motion.swap, value: selected)
+        .accessibilityLabel(day.formatted(date: .complete, time: .omitted))
+        .accessibilityAddTraits(selected ? .isSelected : [])
     }
+
+    private var isWeekend: Bool { Calendar.current.isDateInWeekend(day) }
 }
 
 private struct Agenda: View {
     let service: CalendarService
     let events: [CalendarEvent]
+    @Environment(\.islandStyle) private var style
 
     var body: some View {
         if events.isEmpty {
@@ -115,7 +255,7 @@ private struct Agenda: View {
                     .font(Theme.body(12))
                     .foregroundStyle(Theme.secondary)
             }
-            .frame(maxWidth: .infinity, minHeight: 44)
+            .frame(maxWidth: .infinity, minHeight: 44, maxHeight: style.edge.isSide ? .infinity : nil)
         } else {
             ScrollView(.vertical) {
                 VStack(spacing: 6) {

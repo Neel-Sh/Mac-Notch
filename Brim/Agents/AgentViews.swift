@@ -41,8 +41,38 @@ private struct EmptyAgents: View {
 
 private struct HooksBanner: View {
     let hub: AgentHub
+    @Environment(\.islandStyle) private var style
 
     var body: some View {
+        if style.edge.isSide { stacked } else { wide }
+    }
+
+    /// Docked: too narrow for the button beside the words, so it goes under them at full width.
+    private var stacked: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: "bolt.horizontal.circle.fill")
+                    .font(.system(size: 16))
+                    .foregroundStyle(Theme.working)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Approve and follow along from here")
+                        .font(Theme.title(12))
+                    Text("Adds Brim's hook to ~/.claude/settings.json. New sessions only.")
+                        .font(Theme.body(11))
+                        .foregroundStyle(Theme.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            Button { hub.setHooksInstalled(true) } label: {
+                Text("Turn On").frame(maxWidth: .infinity)
+            }
+            .buttonStyle(PillButtonStyle(kind: .primary))
+        }
+        .padding(12)
+        .background(RoundedRectangle(cornerRadius: Theme.rowRadius, style: .continuous).fill(Theme.row))
+    }
+
+    private var wide: some View {
         HStack(spacing: 10) {
             Image(systemName: "bolt.horizontal.circle.fill")
                 .font(.system(size: 16))
@@ -68,6 +98,7 @@ struct AgentRow: View {
     let session: AgentSession
     let hub: AgentHub
     @State private var hovering = false
+    @Environment(\.islandStyle) private var style
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -102,7 +133,8 @@ struct AgentRow: View {
                         .font(Theme.title(12.5))
                         .lineLimit(1)
                     HStack(spacing: 5) {
-                        if session.displayTitle != session.projectName {
+                        // Docked there's no room for both; what it's doing wins over where.
+                        if session.displayTitle != session.projectName, !style.edge.isSide {
                             Text(session.projectName)
                                 .foregroundStyle(Theme.tertiary)
                         }

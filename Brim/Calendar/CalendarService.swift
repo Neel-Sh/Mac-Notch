@@ -16,7 +16,7 @@ struct CalendarEvent: Identifiable, Equatable {
     func isHappening(at date: Date) -> Bool { start <= date && date < end }
 }
 
-/// The week ahead from the Mac's calendars (iCloud, Google, Exchange: whatever Calendar.app shows).
+/// The weeks ahead from the Mac's calendars (iCloud, Google, Exchange: whatever Calendar.app shows).
 @Observable
 final class CalendarService {
     enum Access: Equatable { case unknown, granted, denied }
@@ -27,10 +27,14 @@ final class CalendarService {
 
     @ObservationIgnored private let store = EKEventStore()
     @ObservationIgnored private var observer: Any?
+    @ObservationIgnored fileprivate var isDemo = false
+
+    /// How far ahead the day rail reaches: a week shows at once, two-finger scroll for the rest.
+    static let span = 28
 
     var days: [Date] {
         let today = Calendar.current.startOfDay(for: .now)
-        return (0..<7).compactMap { Calendar.current.date(byAdding: .day, value: $0, to: today) }
+        return (0..<Self.span).compactMap { Calendar.current.date(byAdding: .day, value: $0, to: today) }
     }
 
     func events(on day: Date) -> [CalendarEvent] {
@@ -53,7 +57,7 @@ final class CalendarService {
 
     /// Asked the first time the Calendar page opens, never at launch.
     func requestAccessIfNeeded() {
-        guard access == .unknown else { load(); return }
+        guard !isDemo, access == .unknown else { load(); return }
         Task {
             let granted = (try? await store.requestFullAccessToEvents()) ?? false
             access = granted ? .granted : .denied
@@ -70,10 +74,10 @@ final class CalendarService {
     }
 
     func load() {
-        guard Self.currentAccess == .granted else { return }
+        guard !isDemo, Self.currentAccess == .granted else { return }
         access = .granted
         let start = Calendar.current.startOfDay(for: .now)
-        guard let end = Calendar.current.date(byAdding: .day, value: 7, to: start) else { return }
+        guard let end = Calendar.current.date(byAdding: .day, value: Self.span, to: start) else { return }
         let predicate = store.predicateForEvents(withStart: start, end: end, calendars: nil)
         events = store.events(matching: predicate)
             .filter { $0.status != .canceled }
@@ -109,5 +113,13 @@ final class CalendarService {
     func openInCalendar(_ event: CalendarEvent) {
         if let url = event.calendarItemURL, NSWorkspace.shared.open(url) { return }
         NSWorkspace.shared.open(URL(fileURLWithPath: "/System/Applications/Calendar.app"))
+    }
+}
+
+extension CalendarService {
+    func loadDemo(_ demo: [CalendarEvent]) {
+        isDemo = true
+        access = .granted
+        events = demo.sorted { $0.start < $1.start }
     }
 }
