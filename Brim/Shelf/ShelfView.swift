@@ -3,6 +3,7 @@ import SwiftUI
 struct ShelfPage: View {
     let shelf: ShelfStore
     let isDropTargeted: Bool
+    @Environment(\.islandStyle) private var style
 
     /// A file dragged over the island always lands on the shelf, whichever half is showing.
     private var showsRecents: Bool { shelf.showsRecents && !isDropTargeted }
@@ -18,6 +19,8 @@ struct ShelfPage: View {
                         RecentsList(shelf: shelf)
                     } else if shelf.items.isEmpty {
                         DropHint(active: isDropTargeted, compact: true)
+                    } else if style.edge.isSide {
+                        shelfGrid
                     } else {
                         shelfContent
                     }
@@ -46,7 +49,7 @@ struct ShelfPage: View {
             Spacer()
             if showsRecents {
                 if shelf.history.contains(where: { !shelf.isOnShelf($0) }) {
-                    Button("Clear Recents") { withAnimation(Motion.swap) { shelf.clearHistory() } }
+                    Button(style.edge.isSide ? "Clear" : "Clear Recents") { withAnimation(Motion.swap) { shelf.clearHistory() } }
                         .buttonStyle(PillButtonStyle(kind: .quiet))
                         .help("Forget past files. Nothing is deleted from disk.")
                 }
@@ -58,6 +61,28 @@ struct ShelfPage: View {
         }
         .frame(height: 28)
         .animation(Motion.swap, value: shelf.lastMessage)
+    }
+
+    /// Docked: the files as a grid that scrolls, the actions held at the foot.
+    private var shelfGrid: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            ScrollView(.vertical) {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 72), spacing: 6)], spacing: 6) {
+                    ForEach(shelf.items) { item in
+                        FileTile(item: item, thumbnail: shelf.thumbnail(for: item), fills: true) {
+                            withAnimation(Motion.swap) { shelf.remove(item.id) }
+                        }
+                        .transition(.scale(scale: 0.8).combined(with: .opacity))
+                    }
+                    if isDropTargeted { DropSlot().transition(.opacity) }
+                }
+                .animation(Motion.swap, value: shelf.items)
+            }
+            .scrollIndicators(.never)
+            .scrollEdgeEffectStyle(.soft, for: .bottom)
+            .frame(maxHeight: .infinity)
+            actions
+        }
     }
 
     private var shelfContent: some View {
@@ -75,7 +100,11 @@ struct ShelfPage: View {
                 .animation(Motion.swap, value: shelf.items)
             }
             .scrollIndicators(.never)
+            actions
+        }
+    }
 
+    private var actions: some View {
             Grid(horizontalSpacing: 6, verticalSpacing: 6) {
                 GridRow {
                     ActionRow(symbol: "airplayaudio", title: "AirDrop", action: shelf.airDrop)
@@ -84,14 +113,16 @@ struct ShelfPage: View {
                 GridRow {
                     if shelf.canMakePDF {
                         ActionRow(symbol: "doc.richtext", title: "Make PDF", action: shelf.makePDF)
-                        ActionRow(symbol: "folder", title: "Show in Finder", action: shelf.revealInFinder)
+                        // Docked, half the panel is too narrow for the long name.
+                        ActionRow(symbol: "folder", title: style.edge.isSide ? "Reveal" : "Show in Finder",
+                                  action: shelf.revealInFinder)
+                            .help("Show in Finder")
                     } else {
                         ActionRow(symbol: "folder", title: "Show in Finder", action: shelf.revealInFinder)
                             .gridCellColumns(2)
                     }
                 }
             }
-        }
     }
 }
 
@@ -231,6 +262,7 @@ extension ShelfPage {
 private struct DropHint: View {
     let active: Bool
     var compact = false
+    @Environment(\.islandStyle) private var style
 
     var body: some View {
         VStack(spacing: 6) {
@@ -238,7 +270,7 @@ private struct DropHint: View {
                 .font(.system(size: 22, weight: .medium))
                 .foregroundStyle(active ? Theme.primary : Theme.tertiary)
                 .symbolEffect(.bounce, value: active)
-            Text(active ? "Drop to keep it here" : "Drag files onto the notch")
+            Text(active ? "Drop to keep it here" : (style.edge.isSide ? "Drag files onto Brim" : "Drag files onto the notch"))
                 .font(Theme.title(12.5))
                 .foregroundStyle(active ? Theme.primary : Theme.secondary)
             if !compact {
@@ -247,6 +279,8 @@ private struct DropHint: View {
                     .foregroundStyle(Theme.tertiary)
             }
         }
+        .multilineTextAlignment(.center)
+        .padding(.horizontal, 14)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
@@ -268,6 +302,8 @@ private struct DropSlot: View {
 private struct FileTile: View {
     let item: ShelfItem
     let thumbnail: NSImage?
+    /// Stretch to the grid cell instead of holding the strip's fixed width.
+    var fills = false
     let remove: () -> Void
     @State private var hovered = false
 
@@ -303,6 +339,7 @@ private struct FileTile: View {
                 .frame(width: 72)
         }
         .padding(.vertical, 4)
+        .frame(maxWidth: fills ? .infinity : nil)
         .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.white.opacity(hovered ? 0.08 : 0.04)))
         .onHover { hovering in withAnimation(Motion.tap) { hovered = hovering } }
         .onDrag { NSItemProvider(contentsOf: item.url) ?? NSItemProvider() }
@@ -325,6 +362,7 @@ private struct ActionRow: View {
                     .foregroundStyle(Theme.secondary)
                 Text(title)
                     .font(.system(size: 12, weight: .medium))
+                    .lineLimit(1)
                 Spacer(minLength: 0)
             }
             .padding(.horizontal, 12)

@@ -76,6 +76,7 @@ final class IslandController {
     let weather: WeatherService
     let nowPlaying: NowPlaying
     let shelf: ShelfStore
+    let prefs = Preferences.shared
 
     @ObservationIgnored private var panel: IslandPanel?
     @ObservationIgnored private var hosting: IslandHostingView<IslandRootView>?
@@ -85,6 +86,7 @@ final class IslandController {
     @ObservationIgnored private var peekTask: Task<Void, Never>?
     @ObservationIgnored private var tightenTask: Task<Void, Never>?
     @ObservationIgnored private var lastPresentation: IslandPresentation = .resting
+    @ObservationIgnored private lazy var hotKey = HotKey { [weak self] in self?.toggle() }
 
     init(agents: AgentHub, calendar: CalendarService, tasks: TaskStore, weather: WeatherService,
          nowPlaying: NowPlaying, shelf: ShelfStore) {
@@ -99,14 +101,20 @@ final class IslandController {
     func start() {
         model.liveActivity = { [weak self] in
             guard let self else { return false }
-            return self.agents.lead != nil || self.nowPlaying.isPlaying
+            return (self.prefs.wingsForAgents && self.agents.lead != nil)
+                || (self.prefs.wingsForMusic && self.nowPlaying.isPlaying)
         }
         model.contentHeight = { [weak self] tab in self?.contentHeight(for: tab) ?? 160 }
-        agents.onAttention = { [weak self] session in self?.peek(session) }
+        agents.onAttention = { [weak self] session in
+            guard let self else { return }
+            if self.prefs.soundOnAttention, session.phase.wantsAttention { NSSound(named: "Glass")?.play() }
+            if self.prefs.peekOnAttention { self.peek(session) }
+        }
 
         buildPanel()
         installMonitors()
         observeState()
+        observePreferences()
 
         NotificationCenter.default.addObserver(
             forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main
@@ -122,6 +130,7 @@ final class IslandController {
 
     /// Each page's natural height, from what it's showing right now.
     private func contentHeight(for tab: IslandTab) -> CGFloat {
+        if prefs.edge.isSide { return sideContentHeight(for: tab) }
         switch tab {
         case .agents:
             let rows = agents.ordered
@@ -150,6 +159,44 @@ final class IslandController {
         }
     }
 
+    /// The same, for the portrait layouts of the docked panel.
+    private func sideContentHeight(for tab: IslandTab) -> CGFloat {
+        let prompt: CGFloat = 156
+        switch tab {
+        case .agents:
+            let rows = agents.ordered
+            let banner: CGFloat = agents.hooksInstalled ? 0 : 124
+            guard !rows.isEmpty else { return banner + 120 }
+            let asks = rows.count { $0.ask != nil && $0.phase == .needsPermission }
+            return banner + CGFloat(rows.count) * 55 + CGFloat(asks) * 90 + 4
+        case .tasks:
+            let composer: CGFloat = 10 + 38
+            guard !tasks.items.isEmpty else { return 116 + composer }
+            return 28 + 10 + CGFloat(tasks.items.count) * 44 + 4 + composer
+        case .calendar:
+            guard calendar.access == .granted else { return prompt }
+            let count = calendar.events(on: calendar.selectedDay).count
+            return 28 + 8 + 56 + 12 + (count == 0 ? 64 : CGFloat(min(count, 5)) * 50 - 6)
+        case .weather:
+            guard weather.forecast != nil else { return prompt }
+            let days: CGFloat = prefs.compact ? 4 : 5
+            return 74 + 14 + 62 + 16 + days * 24 - 5 + 16 + 50
+        case .media:
+            return nowPlaying.hasTrack ? MediaPage.portraitArtwork(compact: prefs.compact) + 142 : 130
+        case .shelf:
+            if shelf.items.isEmpty && shelf.history.isEmpty { return prompt }
+            let header: CGFloat = 28 + 10
+            if shelf.showsRecents && !model.isDropTargeted {
+                let rows = CGFloat(max(2, min(shelf.history.count, 6)))
+                return header + rows * (ShelfPage.recentRowHeight + 7) + 4
+            }
+            guard !shelf.items.isEmpty else { return header + 120 }
+            let columns = prefs.compact ? 3 : 4
+            let rows = min((shelf.items.count + (model.isDropTargeted ? 1 : 0) + columns - 1) / columns, 3)
+            return header + CGFloat(rows) * 88 + 4 + 10 + 74
+        }
+    }
+
     // MARK: Panel
 
     private static var targetScreen: NSScreen? {
@@ -160,17 +207,27 @@ final class IslandController {
         guard let screen = Self.targetScreen else { return }
         model.notch = NotchMetrics.of(screen)
 
-        let size = IslandLayout.panelSize
-        let midX: CGFloat
-        if let left = screen.auxiliaryTopLeftArea, let right = screen.auxiliaryTopRightArea, left.width > 0 {
-            midX = (left.maxX + right.minX) / 2
-        } else {
-            midX = screen.frame.midX
+        let style = prefs.style
+        let size = IslandLayout.panelSize(style)
+        let origin: NSPoint
+        switch style.edge {
+        case .top:
+            let midX: CGFloat
+            if let left = screen.auxiliaryTopLeftArea, let right = screen.auxiliaryTopRightArea, left.width > 0 {
+                midX = (left.maxX + right.minX) / 2
+            } else {
+                midX = screen.frame.midX
+            }
+            origin = NSPoint(x: midX - size.width / 2, y: screen.frame.maxY - size.height)
+        case .left, .right:
+            // Centred on the chosen point along the edge, kept clear of the menu bar and the screen's foot.
+            let visible = screen.visibleFrame
+            let low = visible.minY + size.height / 2, high = visible.maxY - size.height / 2
+            let midY = high >= low ? high - (high - low) * min(max(prefs.sideOffset, 0), 1) : visible.midY
+            let x = style.edge == .left ? screen.frame.minX : screen.frame.maxX - size.width
+            origin = NSPoint(x: x, y: midY - size.height / 2)
         }
-        let frame = screen.backingAlignedRect(
-            NSRect(x: midX - size.width / 2, y: screen.frame.maxY - size.height, width: size.width, height: size.height),
-            options: .alignAllEdgesNearest
-        )
+        let frame = screen.backingAlignedRect(NSRect(origin: origin, size: size), options: .alignAllEdgesNearest)
 
         if let panel {
             panel.setFrame(frame, display: true)
@@ -193,11 +250,17 @@ final class IslandController {
         hosting?.hitRect = rect(for: model.presentation)
     }
 
+    /// The island inside the panel, top-left origin.
     private func rect(for presentation: IslandPresentation) -> CGRect {
         let page: IslandTab = if case .open(let shown) = presentation { shown } else { model.tab }
-        let size = IslandLayout.size(for: presentation, notch: model.notch, peekHeight: model.peekHeight,
-                                     contentHeight: model.contentHeight(page))
-        return CGRect(x: (IslandLayout.panelSize.width - size.width) / 2, y: 0, width: size.width, height: size.height)
+        let size = model.size(for: presentation, page: page)
+        let panel = IslandLayout.panelSize(prefs.style)
+        let origin: CGPoint = switch prefs.edge {
+        case .top: CGPoint(x: (panel.width - size.width) / 2, y: 0)
+        case .left: CGPoint(x: 0, y: (panel.height - size.height) / 2)
+        case .right: CGPoint(x: panel.width - size.width, y: (panel.height - size.height) / 2)
+        }
+        return CGRect(origin: origin, size: size)
     }
 
     /// The island in screen coordinates, for pointer tests.
@@ -209,6 +272,30 @@ final class IslandController {
     }
 
     // MARK: State plumbing
+
+    /// Moving or resizing the island rebuilds its panel; the shortcut re-registers; hidden pages give way.
+    private func observePreferences() {
+        withObservationTracking {
+            _ = prefs.edge
+            _ = prefs.compact
+            _ = prefs.sideOffset
+            _ = prefs.shortcut
+            _ = prefs.hiddenTabs
+        } onChange: { [weak self] in
+            Task { @MainActor in
+                guard let self else { return }
+                self.preferencesChanged()
+                self.observePreferences()
+            }
+        }
+        preferencesChanged()
+    }
+
+    private func preferencesChanged() {
+        buildPanel()
+        hotKey.set(prefs.shortcut)
+        if !prefs.isVisible(model.tab), let first = prefs.visibleTabs.first { model.tab = first }
+    }
 
     private func observeState() {
         withObservationTracking {
@@ -276,24 +363,38 @@ final class IslandController {
     private func pointerMoved() {
         guard !model.isHovering else { return }
         let presentation = model.presentation
-        let target = presentation.isExpanded ? screenRect(for: presentation) : screenRect(for: .resting).insetBy(dx: -6, dy: -4)
+        let target = presentation.isExpanded ? screenRect(for: presentation) : restingTarget(presentation)
         let inside = target.contains(NSEvent.mouseLocation)
 
         if model.isPointerNear != (inside && !presentation.isExpanded) {
             withAnimation(Motion.tap) { model.isPointerNear = inside && !presentation.isExpanded }
         }
-        guard inside else { openTask?.cancel(); openTask = nil; return }
+        guard inside, prefs.openTrigger == .hover else { openTask?.cancel(); openTask = nil; return }
         guard openTask == nil else { return }
+        let delay = Int(prefs.hoverDelay * 1000)
         openTask = Task { [weak self] in
-            try? await Task.sleep(for: .milliseconds(120))
+            try? await Task.sleep(for: .milliseconds(delay))
             guard !Task.isCancelled, let self else { return }
             self.openTask = nil
             withAnimation(Motion.open) {
+                if let home = self.prefs.homeTab, self.prefs.isVisible(home) { self.model.tab = home }
                 self.model.isPointerNear = false
                 self.model.isHovering = true
             }
+            self.didOpen()
             self.watchForExit()
         }
+    }
+
+    /// Where the pointer has to be to wake the closed island. A docked pill is thin, so its zone is generous.
+    private func restingTarget(_ presentation: IslandPresentation) -> CGRect {
+        let rect = screenRect(for: presentation)
+        return prefs.edge.isSide ? rect.insetBy(dx: -8, dy: -12) : rect.insetBy(dx: -6, dy: -4)
+    }
+
+    private func didOpen() {
+        guard prefs.haptics else { return }
+        NSHapticFeedbackManager.defaultPerformer.perform(.levelChange, performanceTime: .now)
     }
 
     /// Close only after the pointer has been outside for 420ms straight, with a 6pt margin,
@@ -330,9 +431,22 @@ final class IslandController {
     // MARK: Actions
 
     func open(_ tab: IslandTab) {
+        let wasExpanded = model.presentation.isExpanded
         withAnimation(Motion.open) {
-            model.tab = tab
+            model.tab = prefs.isVisible(tab) ? tab : (prefs.visibleTabs.first ?? tab)
             model.isOpenedByClick = true
+            model.isPointerNear = false
+        }
+        if !wasExpanded { didOpen() }
+    }
+
+    /// Clicking the closed island, or the global shortcut.
+    func toggle() {
+        if model.presentation.isExpanded, case .open = model.presentation {
+            close()
+        } else {
+            panel?.makeKey()
+            open(prefs.homeTab ?? model.tab)
         }
     }
 
@@ -365,10 +479,11 @@ final class IslandController {
         peekTask?.cancel()
         let height: CGFloat = switch (session.phase, session.ask) {
         case (.needsPermission, let ask?) where ask.isQuestion && ask.questions.count == 1:
-            CGFloat(100 + ask.questions[0].options.count * 37)
+            // The docked panel is narrower, so the question itself usually takes its second line.
+            CGFloat(100 + ask.questions[0].options.count * 37) + (prefs.edge.isSide ? 16 : 0)
         case (.needsPermission, let ask?):
             // Room for a command that wraps onto a second or third line.
-            128 + CGFloat(min(((ask.command ?? ask.tool.detail).count - 1) / 62, 2)) * 17
+            128 + CGFloat(min(((ask.command ?? ask.tool.detail).count - 1) / commandColumns, 2)) * 17
         default: 86
         }
         withAnimation(Motion.open) {
@@ -392,6 +507,12 @@ final class IslandController {
                 self?.endPeek()
             }
         }
+    }
+
+    /// Roughly how many monospaced characters fit on one line of a peeked command.
+    private var commandColumns: Int {
+        guard prefs.edge.isSide else { return 62 }
+        return prefs.compact ? 34 : 40
     }
 
     func endPeek() {

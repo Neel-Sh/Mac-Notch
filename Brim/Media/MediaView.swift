@@ -2,59 +2,18 @@ import SwiftUI
 
 struct MediaPage: View {
     let player: NowPlaying
+    @Environment(\.islandStyle) private var style
 
     var body: some View {
         if let track = player.track {
             let tint = Color(nsColor: player.accent ?? .white)
-            HStack(alignment: .center, spacing: 18) {
-                Button(action: player.openPlayer) {
-                    Artwork(image: player.artwork, size: MediaPage.artworkSize)
-                        .shadow(color: tint.opacity(player.artwork == nil ? 0 : 0.35), radius: 18, y: 6)
+            Group {
+                if style.edge.isSide {
+                    portrait(track, tint: tint)
+                } else {
+                    landscape(track, tint: tint)
                 }
-                .buttonStyle(PressableStyle())
-                .help("Open \(track.player.rawValue)")
-
-                VStack(alignment: .leading, spacing: 0) {
-                    HStack(alignment: .top, spacing: 12) {
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(track.title)
-                                .font(Theme.title(16))
-                                .foregroundStyle(Theme.primary)
-                            Text([track.artist, track.album].filter { !$0.isEmpty }.joined(separator: " — "))
-                                .font(Theme.body(12))
-                                .foregroundStyle(Theme.secondary)
-                        }
-                        .lineLimit(1)
-                        .id(track)
-                        .transition(.opacity.animation(Motion.swap))
-                        Spacer(minLength: 0)
-                        SourceChip(name: track.player.rawValue, playing: player.isPlaying, tint: tint,
-                                   action: player.openPlayer)
-                    }
-
-                    Spacer(minLength: 8)
-                    Scrubber(player: player, tint: tint)
-                    Spacer(minLength: 8)
-
-                    HStack(spacing: 10) {
-                        Button(action: player.previous) { Image(systemName: "backward.fill") }
-                            .buttonStyle(IconButtonStyle(size: 32))
-                            .help("Previous")
-                        Button(action: player.togglePlayPause) {
-                            Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
-                                .contentTransition(.symbolEffect(.replace))
-                        }
-                        .buttonStyle(IconButtonStyle(size: 38, prominent: true))
-                        .help(player.isPlaying ? "Pause" : "Play")
-                        .keyboardShortcut(.space, modifiers: [])
-                        Button(action: player.next) { Image(systemName: "forward.fill") }
-                            .buttonStyle(IconButtonStyle(size: 32))
-                            .help("Next")
-                    }
-                }
-                .frame(height: MediaPage.artworkSize)
             }
-            .frame(maxHeight: .infinity, alignment: .top)
             .onAppear(perform: player.refreshPosition)
         } else {
             VStack(spacing: 10) {
@@ -78,7 +37,95 @@ struct MediaPage: View {
         }
     }
 
+    /// On the notch: the cover on the left, everything else beside it.
+    private func landscape(_ track: NowPlaying.Track, tint: Color) -> some View {
+        HStack(alignment: .center, spacing: 18) {
+            cover(track, tint: tint, size: MediaPage.artworkSize)
+
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(alignment: .top, spacing: 12) {
+                    titles(track, size: 16)
+                    Spacer(minLength: 0)
+                    SourceChip(name: track.player.rawValue, playing: player.isPlaying, tint: tint,
+                               action: player.openPlayer)
+                }
+
+                Spacer(minLength: 8)
+                Scrubber(player: player, tint: tint)
+                Spacer(minLength: 8)
+                transport(side: 32, play: 38)
+            }
+            .frame(height: MediaPage.artworkSize)
+        }
+        .frame(maxHeight: .infinity, alignment: .top)
+    }
+
+    /// Docked: the cover takes the panel, the track sits under it, the transport at the foot.
+    private func portrait(_ track: NowPlaying.Track, tint: Color) -> some View {
+        VStack(spacing: 0) {
+            Spacer(minLength: 0)
+            cover(track, tint: tint, size: MediaPage.portraitArtwork(compact: style.compact), radius: 30)
+            Spacer(minLength: 14)
+            HStack(alignment: .center, spacing: 10) {
+                titles(track, size: 17)
+                Spacer(minLength: 0)
+                SourceChip(name: track.player.rawValue, playing: player.isPlaying, tint: tint,
+                           action: player.openPlayer)
+            }
+            .padding(.horizontal, 4)
+            Spacer(minLength: 10)
+            Scrubber(player: player, tint: tint)
+                .padding(.horizontal, 4)
+            Spacer(minLength: 10)
+            transport(side: 38, play: 48, spacing: 18)
+                .frame(maxWidth: .infinity)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func cover(_ track: NowPlaying.Track, tint: Color, size: CGFloat, radius: CGFloat? = nil) -> some View {
+        Button(action: player.openPlayer) {
+            Artwork(image: player.artwork, size: size, radius: radius)
+                .shadow(color: tint.opacity(player.artwork == nil ? 0 : 0.35), radius: 18, y: 6)
+        }
+        .buttonStyle(PressableStyle())
+        .help("Open \(track.player.rawValue)")
+    }
+
+    private func titles(_ track: NowPlaying.Track, size: CGFloat) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(track.title)
+                .font(Theme.title(size))
+                .foregroundStyle(Theme.primary)
+            Text([track.artist, track.album].filter { !$0.isEmpty }.joined(separator: " — "))
+                .font(Theme.body(12))
+                .foregroundStyle(Theme.secondary)
+        }
+        .lineLimit(1)
+        .id(track)
+        .transition(.opacity.animation(Motion.swap))
+    }
+
+    private func transport(side: CGFloat, play: CGFloat, spacing: CGFloat = 10) -> some View {
+        HStack(spacing: spacing) {
+            Button(action: player.previous) { Image(systemName: "backward.fill") }
+                .buttonStyle(IconButtonStyle(size: side))
+                .help("Previous")
+            Button(action: player.togglePlayPause) {
+                Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
+                    .contentTransition(.symbolEffect(.replace))
+            }
+            .buttonStyle(IconButtonStyle(size: play, prominent: true))
+            .help(player.isPlaying ? "Pause" : "Play")
+            .keyboardShortcut(.space, modifiers: [])
+            Button(action: player.next) { Image(systemName: "forward.fill") }
+                .buttonStyle(IconButtonStyle(size: side))
+                .help("Next")
+        }
+    }
+
     static let artworkSize: CGFloat = 112
+    static func portraitArtwork(compact: Bool) -> CGFloat { compact ? 168 : 216 }
 }
 
 /// Which app is playing, with the live equalizer. Opens the app.
@@ -184,10 +231,13 @@ struct ArtworkBackdrop: View {
 struct Artwork: View {
     let image: NSImage?
     var size: CGFloat
+    /// Defaults to a fifth of the size, which suits small covers; a big one names its own.
+    var radius: CGFloat?
 
     var body: some View {
+        let corner = radius ?? size * 0.2
         ZStack {
-            RoundedRectangle(cornerRadius: size * 0.2, style: .continuous)
+            RoundedRectangle(cornerRadius: corner, style: .continuous)
                 .fill(Color.white.opacity(0.08))
             if let image {
                 Image(nsImage: image)
@@ -201,7 +251,7 @@ struct Artwork: View {
             }
         }
         .frame(width: size, height: size)
-        .clipShape(RoundedRectangle(cornerRadius: size * 0.2, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: corner, style: .continuous))
         .animation(Motion.swap, value: image)
     }
 }

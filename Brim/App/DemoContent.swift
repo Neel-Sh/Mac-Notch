@@ -1,4 +1,5 @@
 import AppKit
+import SwiftUI
 
 /// Made-up content for screenshots and recordings: `open Brim.app --args -demo YES -openTab agents`.
 /// Every name, project, place and event here is fictional, and none of it is saved.
@@ -26,12 +27,50 @@ enum DemoContent {
         island.endPeek()
         await wait(1.2)
         island.open(.agents)
-        for tab in [IslandTab.calendar, .weather, .tasks, .shelf] {
-            await wait(2.2)
+        for tab in [IslandTab.calendar, .weather, .tasks, .media, .shelf] {
+            await wait(2.1)
             island.select(tab)
         }
         await wait(2.2)
         island.close()
+    }
+
+    /// Restyles the open island through the Appearance settings, for the README recording (`-demoStyleTour YES`).
+    /// Preferences aren't saved in demo mode, so the next launch is back to your own.
+    static func styleTour(_ island: IslandController) async {
+        func wait(_ seconds: Double) async { try? await Task.sleep(for: .seconds(seconds)) }
+        let prefs = Preferences.shared
+        await wait(1.6)
+        island.open(.weather)
+        await wait(2.0)
+        withAnimation(Motion.swap) { prefs.material = .glass }
+        await wait(2.2)
+        withAnimation(Motion.resize) { prefs.compact = true }
+        await wait(2.2)
+        for (edge, page) in [(IslandEdge.left, IslandTab.agents), (.right, .media), (.top, .weather)] {
+            withAnimation(Motion.resize) { prefs.edge = edge }
+            island.open(page)
+            await wait(2.8)
+        }
+        withAnimation(Motion.resize) { prefs.compact = false; prefs.material = .black }
+        await wait(2.0)
+        island.close()
+    }
+
+    /// Opens the Settings window without a click on the menu bar icon, by sending the app menu's own item.
+    static func openSettings() {
+        let items = NSApp.mainMenu?.items.compactMap(\.submenu).flatMap(\.items) ?? []
+        guard let item = items.first(where: { $0.keyEquivalent == "," }), let action = item.action else { return }
+        NSApp.activate(ignoringOtherApps: true)
+        NSApp.sendAction(action, to: item.target, from: item)
+        // Settings is taller than the space above the Dock, so macOS tucks it under the menu bar. Centre it instead.
+        Task {
+            try? await Task.sleep(for: .milliseconds(400))
+            guard let window = NSApp.windows.first(where: { $0.styleMask.contains(.titled) && $0.isVisible }),
+                  let screen = window.screen else { return }
+            window.setFrameOrigin(NSPoint(x: screen.frame.midX - window.frame.width / 2,
+                                          y: screen.frame.midY - window.frame.height / 2))
+        }
     }
 
     /// The terminal the sessions appear to run in, when one is open, so rows get a real app icon.

@@ -1,5 +1,37 @@
 import SwiftUI
 
+extension EnvironmentValues {
+    /// Where the island is and how big, so a page can lay itself out for the notch or for the docked panel.
+    @Entry var islandStyle = IslandStyle()
+}
+
+/// A page with nothing to show yet in the docked panel: a mark, a line or two, and one button, centred.
+struct SidePrompt: View {
+    let symbol: String
+    let title: String
+    let detail: String
+    let button: String
+    var prominent = false
+    let action: () -> Void
+
+    var body: some View {
+        VStack(spacing: 6) {
+            Image(systemName: symbol)
+                .font(.system(size: 24, weight: .medium))
+                .foregroundStyle(Theme.tertiary)
+                .padding(.bottom, 4)
+            Text(title).font(Theme.title(13.5))
+            Text(detail).font(Theme.body(11.5)).foregroundStyle(Theme.secondary)
+            Button(button, action: action)
+                .buttonStyle(PillButtonStyle(kind: prominent ? .primary : .secondary))
+                .padding(.top, 8)
+        }
+        .multilineTextAlignment(.center)
+        .padding(.horizontal, 12)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
 /// Design tokens. Black island, charcoal rows, one accent per state.
 enum Theme {
     static let island = Color.black
