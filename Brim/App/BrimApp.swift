@@ -30,11 +30,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.setActivationPolicy(.accessory)
         // Unit tests host inside the app; don't take over the notch or the agent socket while they run.
         guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
-        agents.start()
-        nowPlaying.start()
-        weather.start()
-        calendar.start()
+        if UserDefaults.standard.bool(forKey: "demo") {
+            DemoContent.load(into: self)
+        } else {
+            agents.start()
+            nowPlaying.start()
+            weather.start()
+            calendar.start()
+        }
         island.start()
+        if UserDefaults.standard.bool(forKey: "demoPeek"), let first = agents.sessions.first {
+            island.peek(first)
+        }
+        if UserDefaults.standard.bool(forKey: "demoTour") {
+            Task { await DemoContent.tour(island) }
+        }
         // `-openTab agents|calendar|tasks|weather|media|shelf` opens the island on launch, for screenshots and testing.
         if let tab = UserDefaults.standard.string(forKey: "openTab").flatMap(IslandTab.init(rawValue:)) {
             island.open(tab)

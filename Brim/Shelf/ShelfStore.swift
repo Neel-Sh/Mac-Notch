@@ -100,7 +100,7 @@ final class ShelfStore {
         }
     }
 
-    private func loadThumbnail(_ item: ShelfItem) {
+    fileprivate func loadThumbnail(_ item: ShelfItem) {
         let request = QLThumbnailGenerator.Request(fileAt: item.url, size: CGSize(width: 88, height: 88),
                                                    scale: 2, representationTypes: .thumbnail)
         let id = item.id
@@ -115,5 +115,13 @@ final class ShelfStore {
     private func save() {
         try? FileManager.default.createDirectory(at: storeURL.deletingLastPathComponent(), withIntermediateDirectories: true)
         if let data = try? JSONEncoder().encode(items) { try? data.write(to: storeURL, options: .atomic) }
+    }
+}
+
+extension ShelfStore {
+    /// In memory only: demo files never overwrite the real shelf on disk.
+    func loadDemo(_ urls: [URL]) {
+        items = urls.map { ShelfItem(id: UUID(), url: $0, addedAt: .now) }
+        items.forEach(loadThumbnail)
     }
 }
