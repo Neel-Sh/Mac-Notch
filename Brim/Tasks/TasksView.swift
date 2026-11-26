@@ -42,7 +42,7 @@ struct TasksPage: View {
             if store.items.contains(where: \.isDone) {
                 Button("Clear Done") { withAnimation(Motion.swap) { store.clearDone() } }
                     .buttonStyle(PillButtonStyle(kind: .quiet))
-                    .foregroundStyle(Theme.secondary)
+                    .padding(.trailing, -6)
             }
         }
         .padding(.horizontal, 12)

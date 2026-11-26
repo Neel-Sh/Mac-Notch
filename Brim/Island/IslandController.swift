@@ -134,14 +134,19 @@ final class IslandController {
         case .calendar:
             guard calendar.access == .granted else { return 60 }
             let count = calendar.events(on: calendar.selectedDay).count
-            return 66 + 10 + (count == 0 ? 44 : CGFloat(min(count, 4)) * 50 - 6)
+            return 56 + 12 + 8 + (count == 0 ? 44 : CGFloat(min(count, 4)) * 50 - 6)
         case .weather:
             return weather.forecast == nil ? 70 : 226
         case .media:
-            return 96
+            return nowPlaying.hasTrack ? MediaPage.artworkSize + 8 : 110
         case .shelf:
-            guard !shelf.items.isEmpty else { return 110 }
-            return 28 + 10 + 74 + 10 + (shelf.canMakePDF ? 74 : 74)
+            if shelf.items.isEmpty && shelf.history.isEmpty { return 110 }
+            let header: CGFloat = 28 + 10
+            if shelf.showsRecents && !model.isDropTargeted {
+                let rows = CGFloat(max(1, min(shelf.history.count, ShelfPage.visibleRecents)))
+                return header + rows * (ShelfPage.recentRowHeight + 7) + 4
+            }
+            return header + (shelf.items.isEmpty ? 92 : 74 + 10 + 74)
         }
     }
 

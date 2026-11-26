@@ -30,6 +30,13 @@ struct IslandRootView: View {
         )
         return ZStack(alignment: .top) {
             shape.fill(Theme.island, style: FillStyle(antialiased: true))
+                .overlay {
+                    // Drawn across the whole silhouette, shoulders included, so the flares match the page.
+                    if case .open(let tab) = presentation {
+                        PageBackdrop(controller: controller, tab: tab)
+                            .transition(.opacity.animation(Motion.swap))
+                    }
+                }
             AttentionGlow(active: glowsForAttention)
             content(presentation)
                 .padding(.horizontal, IslandLayout.shoulder(for: presentation))
@@ -161,6 +168,26 @@ private struct Wings: View {
     }
 }
 
+/// A page's own backdrop (the Weather sky, the Music album wash), behind the whole open island.
+private struct PageBackdrop: View {
+    let controller: IslandController
+    let tab: IslandTab
+
+    var body: some View {
+        Color.clear.overlay {
+            if tab == .weather, let forecast = controller.weather.forecast {
+                SkyBackdrop(forecast: forecast)
+                    .transition(.opacity.animation(Motion.swap))
+            } else if tab == .media, controller.nowPlaying.hasTrack, let artwork = controller.nowPlaying.artwork {
+                ArtworkBackdrop(image: artwork)
+                    .id(ObjectIdentifier(artwork))
+                    .transition(.opacity.animation(Motion.swap))
+            }
+        }
+        .clipped()
+    }
+}
+
 private struct OpenIsland: View {
     let controller: IslandController
     let tab: IslandTab
@@ -171,9 +198,14 @@ private struct OpenIsland: View {
             Color.clear.frame(height: notch.height + 6)
 
             HStack(spacing: 10) {
+                // The tabs never give up width; the status line truncates instead, so a pill's
+                // capsule always wraps its label.
                 TabBar(selection: tab, badge: badge, select: controller.select)
+                    .fixedSize()
+                    .layoutPriority(1)
                 Spacer(minLength: 12)
                 StatusLine(controller: controller)
+                    .truncationMode(.tail)
             }
             .frame(height: IslandLayout.headerHeight)
             .padding(.horizontal, 16)
@@ -200,12 +232,6 @@ private struct OpenIsland: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             .id(tab)
             .transition(.opacity.animation(Motion.swap))
-        }
-        .background {
-            if tab == .weather, let forecast = controller.weather.forecast {
-                SkyBackdrop(forecast: forecast)
-                    .transition(.opacity.animation(Motion.swap))
-            }
         }
     }
 

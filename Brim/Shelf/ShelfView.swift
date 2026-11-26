@@ -4,53 +4,90 @@ struct ShelfPage: View {
     let shelf: ShelfStore
     let isDropTargeted: Bool
 
+    /// A file dragged over the island always lands on the shelf, whichever half is showing.
+    private var showsRecents: Bool { shelf.showsRecents && !isDropTargeted }
+
     var body: some View {
-        if shelf.items.isEmpty {
+        if shelf.items.isEmpty && shelf.history.isEmpty {
             DropHint(active: isDropTargeted)
         } else {
             VStack(alignment: .leading, spacing: 10) {
-                HStack {
-                    Text("\(shelf.items.count) item\(shelf.items.count == 1 ? "" : "s")")
-                        .font(Theme.title(12.5))
-                    if let message = shelf.lastMessage {
-                        Text(message)
-                            .font(Theme.body(11))
-                            .foregroundStyle(Theme.done)
-                            .transition(.opacity)
+                header
+                Group {
+                    if showsRecents {
+                        RecentsList(shelf: shelf)
+                    } else if shelf.items.isEmpty {
+                        DropHint(active: isDropTargeted, compact: true)
+                    } else {
+                        shelfContent
                     }
-                    Spacer()
-                    Button("Clear") { withAnimation(Motion.swap) { shelf.clear() } }
-                        .buttonStyle(PillButtonStyle(kind: .secondary))
                 }
-                .animation(Motion.swap, value: shelf.lastMessage)
+                .transition(.opacity.animation(Motion.swap))
+            }
+        }
+    }
 
-                ScrollView(.horizontal) {
-                    HStack(spacing: 8) {
-                        ForEach(shelf.items) { item in
-                            FileTile(item: item, thumbnail: shelf.thumbnails[item.id]) {
-                                withAnimation(Motion.swap) { shelf.remove(item.id) }
-                            }
-                            .transition(.scale(scale: 0.8).combined(with: .opacity))
-                        }
-                        if isDropTargeted { DropSlot().transition(.opacity) }
-                    }
-                    .animation(Motion.swap, value: shelf.items)
+    private var header: some View {
+        HStack(spacing: 8) {
+            SegmentPill(title: "Shelf", count: shelf.items.count, selected: !showsRecents) {
+                withAnimation(Motion.swap) { shelf.showsRecents = false }
+            }
+            SegmentPill(title: "Recents", count: shelf.history.count, selected: showsRecents) {
+                withAnimation(Motion.swap) { shelf.showsRecents = true }
+            }
+            if let message = shelf.lastMessage {
+                Text(message)
+                    .font(Theme.body(11))
+                    .foregroundStyle(Theme.done)
+                    .lineLimit(1)
+                    .padding(.leading, 4)
+                    .transition(.opacity)
+            }
+            Spacer()
+            if showsRecents {
+                if shelf.history.contains(where: { !shelf.isOnShelf($0) }) {
+                    Button("Clear Recents") { withAnimation(Motion.swap) { shelf.clearHistory() } }
+                        .buttonStyle(PillButtonStyle(kind: .quiet))
+                        .help("Forget past files. Nothing is deleted from disk.")
                 }
-                .scrollIndicators(.never)
+            } else if !shelf.items.isEmpty {
+                Button("Clear") { withAnimation(Motion.swap) { shelf.clear() } }
+                    .buttonStyle(PillButtonStyle(kind: .secondary))
+                    .help("Empty the shelf. The files stay in Recents.")
+            }
+        }
+        .frame(height: 28)
+        .animation(Motion.swap, value: shelf.lastMessage)
+    }
 
-                Grid(horizontalSpacing: 6, verticalSpacing: 6) {
-                    GridRow {
-                        ActionRow(symbol: "airplayaudio", title: "AirDrop", action: shelf.airDrop)
-                        ActionRow(symbol: "doc.on.doc", title: "Copy", action: shelf.copy)
-                    }
-                    GridRow {
-                        if shelf.canMakePDF {
-                            ActionRow(symbol: "doc.richtext", title: "Make PDF", action: shelf.makePDF)
-                            ActionRow(symbol: "folder", title: "Show in Finder", action: shelf.revealInFinder)
-                        } else {
-                            ActionRow(symbol: "folder", title: "Show in Finder", action: shelf.revealInFinder)
-                                .gridCellColumns(2)
+    private var shelfContent: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            ScrollView(.horizontal) {
+                HStack(spacing: 8) {
+                    ForEach(shelf.items) { item in
+                        FileTile(item: item, thumbnail: shelf.thumbnail(for: item)) {
+                            withAnimation(Motion.swap) { shelf.remove(item.id) }
                         }
+                        .transition(.scale(scale: 0.8).combined(with: .opacity))
+                    }
+                    if isDropTargeted { DropSlot().transition(.opacity) }
+                }
+                .animation(Motion.swap, value: shelf.items)
+            }
+            .scrollIndicators(.never)
+
+            Grid(horizontalSpacing: 6, verticalSpacing: 6) {
+                GridRow {
+                    ActionRow(symbol: "airplayaudio", title: "AirDrop", action: shelf.airDrop)
+                    ActionRow(symbol: "doc.on.doc", title: "Copy", action: shelf.copy)
+                }
+                GridRow {
+                    if shelf.canMakePDF {
+                        ActionRow(symbol: "doc.richtext", title: "Make PDF", action: shelf.makePDF)
+                        ActionRow(symbol: "folder", title: "Show in Finder", action: shelf.revealInFinder)
+                    } else {
+                        ActionRow(symbol: "folder", title: "Show in Finder", action: shelf.revealInFinder)
+                            .gridCellColumns(2)
                     }
                 }
             }
@@ -58,8 +95,142 @@ struct ShelfPage: View {
     }
 }
 
+/// One half of the Shelf page's switch: a label and how many files it holds.
+private struct SegmentPill: View {
+    let title: String
+    let count: Int
+    let selected: Bool
+    let action: () -> Void
+    @State private var hovered = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 5) {
+                Text(title)
+                    .font(.system(size: 12, weight: .semibold))
+                Text("\(count)")
+                    .font(.system(size: 10.5, weight: .semibold, design: .rounded).monospacedDigit())
+                    .foregroundStyle(selected ? Theme.secondary : Theme.tertiary)
+                    .contentTransition(.numericText())
+            }
+            .padding(.horizontal, 11)
+            .frame(height: 26)
+            .foregroundStyle(selected ? Theme.primary : Theme.secondary)
+            .background(Capsule().fill(Color.white.opacity(selected ? 0.13 : (hovered ? 0.06 : 0))))
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering in withAnimation(Motion.tap) { hovered = hovering } }
+        .animation(Motion.swap, value: count)
+    }
+}
+
+/// The last files that passed through the shelf, newest first. Click one to put it back,
+/// drag it straight out, or swipe left (two fingers) to forget it.
+private struct RecentsList: View {
+    let shelf: ShelfStore
+
+    var body: some View {
+        if shelf.history.isEmpty {
+            Text("Files you drop on the shelf show up here, so you can find them again.")
+                .font(Theme.body(11.5))
+                .foregroundStyle(Theme.tertiary)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            SwipeList(items: shelf.history, rowHeight: ShelfPage.recentRowHeight,
+                      actionTitle: "Remove from Recents", actionSymbol: "xmark") { item in
+                RecentRow(item: item, thumbnail: shelf.thumbnail(for: item), onShelf: shelf.isOnShelf(item),
+                          restore: { withAnimation(Motion.swap) { shelf.restore(item) } },
+                          forget: { withAnimation(Motion.swap) { shelf.forget(item.id) } })
+            } onSwipe: { item in
+                shelf.forget(item.id)
+            }
+        }
+    }
+}
+
+private struct RecentRow: View {
+    let item: ShelfItem
+    let thumbnail: NSImage?
+    let onShelf: Bool
+    let restore: () -> Void
+    let forget: () -> Void
+    @State private var hovered = false
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Group {
+                if let thumbnail {
+                    Image(nsImage: thumbnail).resizable().aspectRatio(contentMode: .fit)
+                } else {
+                    Image(systemName: "doc").foregroundStyle(Theme.tertiary)
+                }
+            }
+            .frame(width: 26, height: 26)
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text(item.name)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(Theme.primary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                HStack(spacing: 4) {
+                    Text(item.url.deletingLastPathComponent().lastPathComponent)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    Text("·")
+                    Text(item.addedAt, format: .relative(presentation: .named, unitsStyle: .abbreviated))
+                        .fixedSize()
+                }
+                .font(Theme.body(10.5))
+                .foregroundStyle(Theme.tertiary)
+            }
+
+            Spacer(minLength: 8)
+
+            if hovered {
+                HStack(spacing: 6) {
+                    Button { NSWorkspace.shared.activateFileViewerSelecting([item.url]) } label: {
+                        Image(systemName: "folder")
+                    }
+                    .buttonStyle(IconButtonStyle(size: 26))
+                    .help("Show in Finder")
+                    Button(action: forget) { Image(systemName: "xmark") }
+                        .buttonStyle(IconButtonStyle(size: 26))
+                        .help("Remove from Recents (the file stays on disk)")
+                }
+                .transition(.opacity)
+            }
+
+            if onShelf {
+                Label("On shelf", systemImage: "checkmark")
+                    .labelStyle(.titleAndIcon)
+                    .font(.system(size: 10.5, weight: .semibold))
+                    .foregroundStyle(Theme.tertiary)
+            } else {
+                Button("Add", systemImage: "tray.and.arrow.down", action: restore)
+                    .buttonStyle(PillButtonStyle(kind: .secondary))
+                    .help("Put it back on the shelf")
+            }
+        }
+        .padding(.leading, 10)
+        .padding(.trailing, 8)
+        .contentShape(Rectangle())
+        .onHover { hovering in withAnimation(Motion.tap) { hovered = hovering } }
+        .onDrag { NSItemProvider(contentsOf: item.url) ?? NSItemProvider() }
+        .help(item.url.path)
+    }
+}
+
+extension ShelfPage {
+    static let recentRowHeight: CGFloat = 42
+    /// How many Recents rows show before the list scrolls.
+    static let visibleRecents = 5
+}
+
 private struct DropHint: View {
     let active: Bool
+    var compact = false
 
     var body: some View {
         VStack(spacing: 6) {
@@ -70,9 +241,11 @@ private struct DropHint: View {
             Text(active ? "Drop to keep it here" : "Drag files onto the notch")
                 .font(Theme.title(12.5))
                 .foregroundStyle(active ? Theme.primary : Theme.secondary)
-            Text("They wait here until you know where they go. Drag them back out any time.")
-                .font(Theme.body(11))
-                .foregroundStyle(Theme.tertiary)
+            if !compact {
+                Text("They wait here until you know where they go. Drag them back out any time.")
+                    .font(Theme.body(11))
+                    .foregroundStyle(Theme.tertiary)
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(

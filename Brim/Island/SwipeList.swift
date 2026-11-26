@@ -37,6 +37,8 @@ struct SwipeList<Item: Identifiable & Equatable, Row: View>: View {
             }
         }
         .listStyle(.plain)
+        // AppKit's table keeps its own side gutter; pull the rows back flush with the rest of the page.
+        .padding(.horizontal, -8)
         .scrollContentBackground(.hidden)
         .scrollIndicators(.never)
         .environment(\.defaultMinListRowHeight, 1)

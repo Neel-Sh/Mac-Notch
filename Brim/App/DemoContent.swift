@@ -9,7 +9,10 @@ enum DemoContent {
         delegate.weather.loadDemo(forecast(now: now))
         delegate.calendar.loadDemo(events(now: now))
         delegate.tasks.loadDemo(tasks(now: now))
-        delegate.shelf.loadDemo(shelfFiles)
+        let wallpapers = shelfFiles
+        delegate.shelf.loadDemo(Array(wallpapers.prefix(3)), past: Array(wallpapers.dropFirst(3)))
+        // `-demoRecents YES` opens the Shelf page on Recents.
+        delegate.shelf.showsRecents = UserDefaults.standard.bool(forKey: "demoRecents")
         delegate.nowPlaying.loadDemo(title: "Golden Hour Drive", artist: "The Night Shift",
                                      album: "Coastline", artwork: artwork())
     }
@@ -115,7 +118,7 @@ enum DemoContent {
         let names = ((try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? [])
             .filter { $0.hasSuffix(".heic") }
             .sorted()
-            .prefix(3)
+            .prefix(9)
         return names.map { folder.appendingPathComponent($0) }
     }
 
