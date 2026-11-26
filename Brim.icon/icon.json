@@ -1,0 +1,42 @@
+{
+  "fill" : {
+    "linear-gradient" : [
+      "extended-srgb:0.035294,0.031373,0.105882,1.000000",
+      "extended-srgb:0.145098,0.105882,0.360784,1.000000"
+    ]
+  },
+  "groups" : [
+    {
+      "glass" : true,
+      "layers" : [
+        {
+          "image-name" : "notch.svg",
+          "name" : "Notch"
+        }
+      ],
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 0.5
+      },
+      "specular" : true
+    },
+    {
+      "layers" : [
+        {
+          "image-name" : "glow.svg",
+          "name" : "Glow"
+        }
+      ],
+      "shadow" : {
+        "kind" : "none",
+        "opacity" : 0
+      },
+      "specular" : false
+    }
+  ],
+  "supported-platforms" : {
+    "squares" : [
+      "macOS"
+    ]
+  }
+}
