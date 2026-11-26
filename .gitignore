@@ -2,11 +2,26 @@
 build/
 DerivedData/
 *.xcarchive
+*.dSYM/
+*.xcresult/
 
 # Xcode per-user state
 xcuserdata/
 *.xcuserstate
 *.xcscmblueprint
+*.xccheckout
+
+# Swift Package Manager
+.build/
+.swiftpm/
+
+# Capture scratch files
+*.mov
+
+# Editors and assistants
+.vscode/
+.idea/
+.claude/
 
 # macOS
 .DS_Store

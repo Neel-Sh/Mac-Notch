@@ -14,9 +14,19 @@ To try a change without your own sessions, calendar or location, run in demo mod
 open build/DerivedData/Build/Products/Debug/Brim.app --args -demo YES -openTab agents
 ```
 
-`scripts/screenshots.sh` and `scripts/record-demo.sh` regenerate the README images from demo mode. Rerun them when a change alters how a page looks.
+`scripts/media.sh` regenerates every README image and recording from demo mode, staged on a desktop wallpaper so nothing from your Mac is captured. Rerun it when a change alters how a page looks (`scripts/media.sh shots` for the screenshots alone). It needs Screen Recording allowed for your terminal, `ffmpeg`, and `python3` with Pillow.
 
-`scripts/check-hook-script.sh` checks that the Perl hook Brim installs into Claude Code still compiles. CI runs both on every pull request.
+Launch arguments that help while working on a page:
+
+| Argument | What it does |
+| --- | --- |
+| `-demo YES` | Made-up content. Nothing is read from your Mac and nothing is saved. |
+| `-openTab <page>` | Opens the island on `agents`, `calendar`, `tasks`, `weather`, `media` or `shelf`. |
+| `-pref.edge left`, `-pref.compact YES`, `-pref.material glass` | Overrides a setting for this launch only. |
+| `-openSettings YES -settingsTab <tab>` | Opens Settings on `general`, `appearance`, `pages` or `agents`. |
+| `-demoPeek YES`, `-demoTour YES`, `-demoStyleTour YES` | Shows an approval, or plays the island through its pages or its styles. |
+
+`scripts/check-hook-script.sh` checks that the Perl hook Brim installs into Claude Code still compiles. CI runs it and the tests on every pull request.
 
 ## How the code is laid out
 
@@ -27,7 +37,7 @@ open build/DerivedData/Build/Products/Debug/Brim.app --args -demo YES -openTab a
 | `Brim/Calendar`, `Tasks`, `Weather`, `Media`, `Shelf` | One folder per tab: its data source and its page |
 | `Brim/App` | App entry, settings, and the made-up content behind demo mode |
 | `BrimTests` | Unit tests for the logic that doesn't need a screen |
-| `scripts` | Hook check, screenshots and the demo recording |
+| `scripts` | Install, the hook check, and the README screenshots and recordings |
 
 ## Conventions
 
@@ -39,4 +49,4 @@ open build/DerivedData/Build/Products/Debug/Brim.app --args -demo YES -openTab a
 
 ## Commits and pull requests
 
-Commit messages follow `type(scope): subject`, for example `fix(agents): keep the turn clock running across tool calls`. Keep each pull request to one change, and fill in the template.
+Commit messages follow `type(scope): subject`, for example `fix(agents): keep the turn clock running across tool calls`. Keep each pull request to one change, and fill in the template. Add a line to `CHANGELOG.md` under Unreleased for anything a user would notice.
