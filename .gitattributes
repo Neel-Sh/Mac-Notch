@@ -1,0 +1,11 @@
+* text=auto eol=lf
+
+# Media
+*.png binary
+*.webp binary
+*.mp4 binary
+*.heic binary
+
+# Keep the language bar about the app, not its tooling
+scripts/** linguist-vendored
+*.pbxproj linguist-generated

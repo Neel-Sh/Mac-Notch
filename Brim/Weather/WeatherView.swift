@@ -2,6 +2,7 @@ import SwiftUI
 
 struct WeatherPage: View {
     let service: WeatherService
+    @Environment(\.islandStyle) private var style
 
     var body: some View {
         switch service.state {
@@ -27,7 +28,16 @@ struct WeatherPage: View {
         }
     }
 
+    @ViewBuilder
     private func message(_ symbol: String, _ title: String, _ detail: String, action: @escaping () -> Void) -> some View {
+        if style.edge.isSide {
+            SidePrompt(symbol: symbol, title: title, detail: detail, button: "Open", action: action)
+        } else {
+            wideMessage(symbol, title, detail, action: action)
+        }
+    }
+
+    private func wideMessage(_ symbol: String, _ title: String, _ detail: String, action: @escaping () -> Void) -> some View {
         HStack(spacing: 12) {
             Image(systemName: symbol)
                 .font(.system(size: 18, weight: .medium))
@@ -45,8 +55,37 @@ struct WeatherPage: View {
 
 private struct ForecastView: View {
     let forecast: Forecast
+    @Environment(\.islandStyle) private var style
 
     var body: some View {
+        if style.edge.isSide { portrait } else { landscape }
+    }
+
+    /// Docked: read top to bottom. Now, the next hours, the week, then the small print.
+    private var portrait: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            now
+                .padding(.horizontal, 4)
+            Spacer(minLength: 14)
+            hours
+            Spacer(minLength: 16)
+            days
+                .padding(.horizontal, 4)
+            Spacer(minLength: 16)
+            HStack(spacing: 0) {
+                Metric(label: "Rain", value: "\(forecast.rainChanceNow)%", fills: true)
+                Metric(label: "Humidity", value: "\(forecast.humidity)%", fills: true)
+                Metric(label: "Feels like", value: "\(Int(forecast.feelsLike.rounded()))°", fills: true)
+                Metric(label: "Wind", value: "\(Int(forecast.windKmh.rounded())) km/h", fills: true)
+            }
+            .padding(.vertical, 9)
+            .padding(.leading, 12)
+            .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color.white.opacity(0.05)))
+        }
+        .frame(maxHeight: .infinity)
+    }
+
+    private var landscape: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .top, spacing: 22) {
                 VStack(alignment: .leading, spacing: 12) {
@@ -106,7 +145,7 @@ private struct ForecastView: View {
 
     /// Each day's range on one shared scale, in the colours of its temperatures. Today marks where it is now.
     private var days: some View {
-        let week = Array(forecast.days.prefix(5))
+        let week = Array(forecast.days.prefix(style.edge.isSide && style.compact ? 4 : 5))
         let low = week.map(\.low).min() ?? 0
         let high = week.map(\.high).max() ?? 1
         return VStack(spacing: 5) {
@@ -156,13 +195,15 @@ private struct ForecastView: View {
             }
         }
         .padding(.vertical, 8)
-        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.white.opacity(0.05)))
+        .background(RoundedRectangle(cornerRadius: style.edge.isSide ? 14 : 12, style: .continuous).fill(Color.white.opacity(0.05)))
     }
 }
 
 private struct Metric: View {
     let label: String
     let value: String
+    /// Share a row evenly instead of holding a fixed column.
+    var fills = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 1) {
@@ -172,7 +213,8 @@ private struct Metric: View {
             Text(value)
                 .font(.system(size: 13, weight: .semibold).monospacedDigit())
         }
-        .frame(minWidth: 80, alignment: .leading)
+        .lineLimit(1)
+        .frame(minWidth: fills ? nil : 80, maxWidth: fills ? .infinity : nil, alignment: .leading)
     }
 }
 

@@ -187,3 +187,13 @@ final class AgentHub {
         onAttention?(session)
     }
 }
+
+// MARK: - Demo
+
+extension AgentHub {
+    /// Sample sessions for screenshots (`-demo YES`). Nothing is read from or written to disk.
+    func loadDemo(_ demo: [AgentSession]) {
+        sessions = demo
+        hooksInstalled = true
+    }
+}

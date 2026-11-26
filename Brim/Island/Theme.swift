@@ -1,5 +1,37 @@
 import SwiftUI
 
+extension EnvironmentValues {
+    /// Where the island is and how big, so a page can lay itself out for the notch or for the docked panel.
+    @Entry var islandStyle = IslandStyle()
+}
+
+/// A page with nothing to show yet in the docked panel: a mark, a line or two, and one button, centred.
+struct SidePrompt: View {
+    let symbol: String
+    let title: String
+    let detail: String
+    let button: String
+    var prominent = false
+    let action: () -> Void
+
+    var body: some View {
+        VStack(spacing: 6) {
+            Image(systemName: symbol)
+                .font(.system(size: 24, weight: .medium))
+                .foregroundStyle(Theme.tertiary)
+                .padding(.bottom, 4)
+            Text(title).font(Theme.title(13.5))
+            Text(detail).font(Theme.body(11.5)).foregroundStyle(Theme.secondary)
+            Button(button, action: action)
+                .buttonStyle(PillButtonStyle(kind: prominent ? .primary : .secondary))
+                .padding(.top, 8)
+        }
+        .multilineTextAlignment(.center)
+        .padding(.horizontal, 12)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
 /// Design tokens. Black island, charcoal rows, one accent per state.
 enum Theme {
     static let island = Color.black
@@ -109,9 +141,9 @@ struct PillButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.system(size: 12, weight: .semibold))
-            .padding(.horizontal, 14)
+            .padding(.horizontal, kind == .quiet ? 10 : 14)
             .frame(height: 28)
-            .foregroundStyle(kind == .primary ? Color.black : Theme.primary)
+            .foregroundStyle(kind == .primary ? Color.black : (kind == .quiet ? Theme.secondary : Theme.primary))
             .background(Capsule().fill(fill))
             .scaleEffect(configuration.isPressed ? 0.96 : 1)
             .opacity(configuration.isPressed ? 0.85 : 1)
@@ -130,15 +162,45 @@ struct PillButtonStyle: ButtonStyle {
 
 struct IconButtonStyle: ButtonStyle {
     var size: CGFloat = 28
+    /// White disc, black glyph: the one main action in a group.
+    var prominent = false
+
     func makeBody(configuration: Configuration) -> some View {
+        IconButtonBody(configuration: configuration, size: size, prominent: prominent)
+    }
+}
+
+private struct IconButtonBody: View {
+    let configuration: ButtonStyleConfiguration
+    let size: CGFloat
+    let prominent: Bool
+    @State private var hovered = false
+
+    var body: some View {
         configuration.label
-            .font(.system(size: size * 0.42, weight: .semibold))
-            .foregroundStyle(Theme.primary)
+            .font(.system(size: size * 0.4, weight: .semibold))
+            .foregroundStyle(prominent ? Color.black : Theme.primary)
             .frame(width: size, height: size)
-            .background(Circle().fill(Color.white.opacity(configuration.isPressed ? 0.18 : 0.09)))
+            .background(Circle().fill(fill))
             .scaleEffect(configuration.isPressed ? 0.92 : 1)
             .animation(Motion.tap, value: configuration.isPressed)
             .contentShape(Circle())
+            .onHover { hovering in withAnimation(Motion.tap) { hovered = hovering } }
+    }
+
+    private var fill: Color {
+        if prominent { return Color.white.opacity(configuration.isPressed ? 0.8 : (hovered ? 1 : 0.92)) }
+        return Color.white.opacity(configuration.isPressed ? 0.18 : (hovered ? 0.13 : 0.09))
+    }
+}
+
+/// Plain content that dips slightly while pressed.
+struct PressableStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.97 : 1)
+            .animation(Motion.tap, value: configuration.isPressed)
+            .contentShape(Rectangle())
     }
 }
 
