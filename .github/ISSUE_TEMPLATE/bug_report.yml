@@ -1,0 +1,36 @@
+name: Bug report
+description: Something in Brim doesn't work the way it should.
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what you saw instead. Screenshots of the island help.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options: [Agents and approvals, Calendar, Tasks, Weather, Music, Shelf, The island itself (open, close, hover), Other]
+    validations:
+      required: true
+  - type: input
+    id: macos
+    attributes:
+      label: macOS version
+      placeholder: "macOS 27.0.1"
+    validations:
+      required: true
+  - type: input
+    id: mac
+    attributes:
+      label: Mac
+      description: Model, and whether it has a notch.
+      placeholder: "MacBook Pro 14-inch, M4 (notch)"
+  - type: input
+    id: claude
+    attributes:
+      label: Claude Code version, if it's about agents
+      placeholder: "claude --version"
