@@ -1,0 +1,16 @@
+name: Feature idea
+description: Something the notch could do better or do next.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What would it help you do
+      description: The situation you're in and what gets in the way today.
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What you have in mind
+      description: Optional. How it might look or work in the island.
