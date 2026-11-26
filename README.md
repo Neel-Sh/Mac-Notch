@@ -36,3 +36,7 @@ Pass `--args -openTab agents` (or `calendar`, `tasks`, `weather`, `media`, `shel
 ## Icon
 
 `Brim.icon` is an Icon Composer document, so you can open it in Icon Composer to edit the Liquid Glass layers.
+
+## License
+
+MIT. See [LICENSE](LICENSE).
